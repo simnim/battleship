@@ -1,11 +1,32 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
-#FIXME: doc string
+This is a proof of concept Battleship AI implementation.
+I've not spent much time optimizing the model,
+so please tweak the model if actually want good performance.
+
+There are two ways to run this code, either `train` or `play`.
+
+Usage:
+    battleship.py train [options]
+    battleship.py play [options]
+
+Options:
+    -h, --help              Show this help message and exit
+    --num-boards NUM        How many boards do you want to use to train? [default: 100000]
+    --model-path PATH       Where do you want to store the model? [default: ~/models/battleship/model.joblib]
+
 """
 import numpy as np
-from keras.models import Sequential
-from keras.layers import Dense, Conv2D, Flatten
-from keras.utils import Sequence
+# from keras.models import Sequential
+# from keras.layers import Dense, Conv2D, Flatten
+# from keras.utils import Sequence
+import time
+import os
+import xgboost as xgb
+from docopt import docopt
+from joblib import dump, load
+
+ARGS_DEFAULT = docopt(__doc__, argv=['train'])
 
 RANDOM_STATE = np.random.RandomState(seed=0)
 BOARD_SIZE = 10
@@ -19,7 +40,7 @@ DISPLAY_CLASSES = [
                     b'\xf0\x9f\x9a\xa2'.decode('utf-8'), # boat
                   ]
 
-TARGETS_FANCY = [
+HIT_OR_MISS_EMOJI = [
                     b'\xf0\x9f\x92\xa8'.decode('utf-8'), # Whoosh
                     b'\xf0\x9f\x92\xa5'.decode('utf-8'), # BOOM
                 ]
@@ -39,8 +60,14 @@ def render_board(board, target=None):
         ret.extend( [
             f'### STATE: {state} ###\n',
             '\n'.join([
-                     ''.join([ DISPLAY_CLASSES[i] for i in row])
-                     for row in board[state]
+                     ''.join([
+                                    HIT_OR_MISS_EMOJI[int(cell==2)]
+                                  if target == (row_i*BOARD_SIZE+col_i)
+                                  else
+                                    DISPLAY_CLASSES[cell]
+                                for col_i, cell in enumerate(row)
+                            ])
+                     for row_i, row in enumerate(board[state])
                    ])
             ] )
     return '\n'.join(ret)
@@ -82,43 +109,97 @@ def reveal_some_of_the_board(board):
         board['observed'][int(pos/BOARD_SIZE), pos%BOARD_SIZE] = board['hidden'][int(pos/BOARD_SIZE), pos%BOARD_SIZE]
     return board
 
-def get_model(weights_path=None):
-    "This is a proof of concept, not a PhD thesis..."
-    #create model.
-    model = Sequential()
-    # add model layers
-    # Add some water around the edges
-    model.add(ZeroPadding2D(1, input_shape=(BOARD_SIZE,BOARD_SIZE,1)))
-    # Use adjacent pixels to help decide on a particular pixel.
-    model.add(Conv2D(64, kernel_size=3, activation='relu'))
-    #model.add(Conv2D(8, kernel_size=3, activation='relu'))
-    model.add(Flatten())
-    model.add(Dense(10, activation='softmax'))
-    if weights_path:
-        model.load_weights(weights_path)
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+
+def get_features_given_board_and_rc(board, row_i, col_i):
+    # row_i, col_i, pixel, num_hits, num_misses,
+    #    up 1, left 1, down 1, right 1
+    #    up 2, left 2, down 2, right 2
+    #    left up 1, left down 1, right up 1, right down 1,
+    ob_board = board['observed']
+    features = [ row_i, col_i, ob_board[row_i,col_i], sum(sum(ob_board==2)), sum(sum(ob_board==0)) ]
+    for distance in range(1,3):
+        features.append( ob_board[ row_i-distance, col_i ] if row_i >= distance else 0 )
+        features.append( ob_board[ row_i, col_i-distance ] if col_i >= distance else 0 )
+        features.append( ob_board[ row_i+distance, col_i ] if row_i < (BOARD_SIZE-distance) else 0 )
+        features.append( ob_board[ row_i, col_i+distance ] if col_i < (BOARD_SIZE-distance) else 0 )
+    features.append( ob_board[ row_i-1, col_i-1 ] if (row_i >= 1 and col_i >= 1) else 0 )
+    features.append( ob_board[ row_i+1, col_i-1 ] if (row_i < (BOARD_SIZE-1) and col_i >= 1) else 0 )
+    features.append( ob_board[ row_i-1, col_i+1 ] if (row_i >= 1 and col_i < (BOARD_SIZE-1)) else 0 )
+    features.append( ob_board[ row_i+1, col_i+1 ] if (row_i < (BOARD_SIZE-1) and col_i < (BOARD_SIZE-1)) else 0 )
+    return features
+
+
+def slice_up_board_into_features(board):
+    pixel_features = []
+    for row_i in range(BOARD_SIZE):
+        for col_i in range(BOARD_SIZE):
+            pixel_features.append( get_features_given_board_and_rc(board, row_i, col_i) )
+    return pixel_features
+
+
+def pick_next_spot_to_target(board, model):
+    # First predict what pixels look good.
+    preds_proba = model.predict_proba(slice_up_board_into_features(board))
+    best_i = sorted(
+                  zip(  range(BOARD_SIZE*BOARD_SIZE)
+                      , preds_proba[:,1]
+                      , (board['observed']==1).flatten()
+                  )
+                , key=lambda i: (not i[2], -i[1])
+             )[0][0]
+    return best_i
+
+
+def get_model():
+    return xgb.XGBClassifier(n_estimators=1000, max_depth=10)
+
+def fit_model(  model_path = ARGS_DEFAULT['--model-path'],
+                num_boards = ARGS_DEFAULT['--num-boards']
+            ):
+    model = get_model()
+    # First get the boards
+    boards = [ reveal_some_of_the_board(create_board()) for i in range(int(num_boards)) ]
+    features = np.concatenate([
+                    slice_up_board_into_features(board)
+                    for board in boards
+                ])
+    labels = np.concatenate([ board['hidden'].flatten() for board in boards ])
+    model.fit(features, labels)
+    dump(model, os.path.expanduser(model_path))
     return model
 
+def play_game(model_path = ARGS_DEFAULT['--model-path']):
+    model = load(os.path.expanduser(model_path))
 
-class battleship_batch_generator(Sequence):
-    def __init__(self, batch_size):
-        self.batch_size = batch_size
-    def __len__(self):
-        return 10000
-    def __getitem__(self, idx):
-        # Yeah... I'll just make it fresh each time.
-        boards  = [ create_board() for i in range(self.batch_size) ]
-        batch_x = [ b['observed'] for b in boards ]
-        batch_y = [ b['hidden'].flatten() for b in boards ]
-        return np.array(batch_x), np.array(batch_y)
+    board = create_board()
+    print(render_board(board))
+    for move_i in range(BOARD_SIZE*BOARD_SIZE):
+        # Pick a spot to target, hit it, then keep going
+        target_pos = pick_next_spot_to_target(board, model)
+        # Update board with targetted position
+        board['observed'][int(target_pos/BOARD_SIZE), target_pos%BOARD_SIZE] = board['hidden'][int(target_pos/BOARD_SIZE), target_pos%BOARD_SIZE]
+        print(render_board(board, target_pos))
+        # If we hit every boat:
+        if sum(sum(board['observed']==2)) == sum([ b[1] for b  in BOATS ]):
+            print("AI game over")
+            break
+        else:
+            time.sleep(1)
+
+def main():
+    args = docopt(__doc__)
+    # Make sure we have the directory
+    os.system('mkdir -p %s'%os.path.expanduser(os.path.dirname(args['--model-path'])))
+    if args['play']:
+        assert os.path.exists(os.path.expanduser(args['--model-path'])), "You have to train the model first. (Did you provide the right model path?)"
+        play_game(args['--model-path'])
+    elif args['train']:
+        fit_model(args['--model-path'], args['--num-boards'])
+    else:
+        sys.stderr.write("How did you get here???\n")
+        sys.exit(1)
 
 
-def make_a_move(board, model):
-    # First predict what pixels look good.
-    preds = model.predict([board['observed']])
-
-
-def play_game():
-    # get the model
-    model = get_model()
-    #
+if __name__ == '__main__':
+    main()
