@@ -22,13 +22,13 @@ import numpy as np
 # from keras.utils import Sequence
 import time
 import os
-import xgboost as xgb
+from sklearn.ensemble import RandomForestClassifier
 from docopt import docopt
 from joblib import dump, load
 
 ARGS_DEFAULT = docopt(__doc__, argv=['train'])
 
-RANDOM_STATE = np.random.RandomState(seed=0)
+#np.random.seed(0)
 BOARD_SIZE = 10
 
 MAX_REVEAL_FRAC = .5
@@ -80,9 +80,9 @@ def create_board():
     for ship_name, boat_size in BOATS:
         # There's no way after 100,000 tries it'll fail to place a boat... if it fails it's from a bug
         for num_tries in range(100000):
-            orientation_lr = RANDOM_STATE.randint(2)
-            ul_coord_r = RANDOM_STATE.randint(BOARD_SIZE - (boat_size-1 if orientation_lr else 0))
-            ul_coord_c = RANDOM_STATE.randint(BOARD_SIZE - (boat_size-1 if not orientation_lr else 0))
+            orientation_lr = np.random.randint(2)
+            ul_coord_r = np.random.randint(BOARD_SIZE - (boat_size-1 if orientation_lr else 0))
+            ul_coord_c = np.random.randint(BOARD_SIZE - (boat_size-1 if not orientation_lr else 0))
             if orientation_lr:
                 # If we can place it, do so, otherwise we'll try another random spot...
                 if not any(board[ul_coord_r:ul_coord_r+boat_size, ul_coord_c]==2):
@@ -101,8 +101,8 @@ def create_board():
 
 def reveal_some_of_the_board(board):
     # Pick a random fraction of the board and reveal it. (up to MAX_REVEAL_FRAC)
-    positions_to_reveal = RANDOM_STATE.choice(  BOARD_SIZE*BOARD_SIZE
-                                            , RANDOM_STATE.randint(BOARD_SIZE*BOARD_SIZE*MAX_REVEAL_FRAC)
+    positions_to_reveal = np.random.choice(  BOARD_SIZE*BOARD_SIZE
+                                            , np.random.randint(BOARD_SIZE*BOARD_SIZE*MAX_REVEAL_FRAC)
                                             , replace=False
                                         )
     for pos in positions_to_reveal:
@@ -152,7 +152,7 @@ def pick_next_spot_to_target(board, model):
 
 
 def get_model():
-    return xgb.XGBClassifier(n_estimators=1000, max_depth=10)
+    return RandomForestClassifier(n_estimators = 1000, max_depth = 10)
 
 def fit_model(  model_path = ARGS_DEFAULT['--model-path'],
                 num_boards = ARGS_DEFAULT['--num-boards']
