@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """
 This is a proof of concept Battleship AI implementation.
-I've not spent much time optimizing the model,
-so please tweak the model if actually want it to be clever.
+I've not spent much time optimizing the model. I just used what I thought would
+work well enough for the POC. Tweak it to make it better.
+Right now I'm using a RandomForestClassifier with 1000 trees and maxdepth=10.
+
+To improve this model, simply tweak the get_model function and make sure the
+object follows sklearn's api. (supports .fit() and .predict_proba() )
 
 There are two ways to run this code, either `train` or `play`.
+If you want to use my prertrained model you'll probably be ok as is,
+just have to copy it into the model directory. I trained it using
+scikit-learn==0.19.2 and numpy==1.16.1 so if it's not working try with
+those versions.
 
 Usage:
     battleship.py train [options]
@@ -175,14 +183,14 @@ def play_game(  model_path = ARGS_DEFAULT['--model-path'],
     board = create_board()
     print(render_board(board))
     for move_i in range(BOARD_SIZE*BOARD_SIZE):
-        # Pick a spot to target, hit it, then keep going
+        # Use the model to pick a spot to target, hit it, then keep going
         target_pos = pick_next_spot_to_target(board, model)
         # Update board with targetted position
         board['observed'][int(target_pos/BOARD_SIZE), target_pos%BOARD_SIZE] = board['hidden'][int(target_pos/BOARD_SIZE), target_pos%BOARD_SIZE]
         print(render_board(board, target_pos))
         # If we hit every boat:
         if sum(sum(board['observed']==2)) == sum([ b[1] for b  in BOATS ]):
-            print("AI game over")
+            print("All boats sunk!")
             break
         else:
             time.sleep(float(print_delay))
