@@ -2,7 +2,7 @@
 """
 This is a proof of concept Battleship AI implementation.
 I've not spent much time optimizing the model,
-so please tweak the model if actually want good performance.
+so please tweak the model if actually want it to be clever.
 
 There are two ways to run this code, either `train` or `play`.
 
@@ -14,17 +14,15 @@ Options:
     -h, --help              Show this help message and exit
     --num-boards NUM        How many boards do you want to use to train? [default: 100000]
     --model-path PATH       Where do you want to store the model? [default: ~/models/battleship/model.joblib]
-
+    --print-delay SECONDS   In play mode, how many seconds to wait between printing AI moves? (try .1 for it to run faster) [default: 1]
 """
 import numpy as np
-# from keras.models import Sequential
-# from keras.layers import Dense, Conv2D, Flatten
-# from keras.utils import Sequence
 import time
 import os
 from sklearn.ensemble import RandomForestClassifier
 from docopt import docopt
 from joblib import dump, load
+import fastnumbers
 
 ARGS_DEFAULT = docopt(__doc__, argv=['train'])
 
@@ -35,14 +33,14 @@ MAX_REVEAL_FRAC = .5
 
 # 0 -> Water, 1 -> Fog, 2 -> Boat
 DISPLAY_CLASSES = [
-                    b'\xf0\x9f\x8c\x8a'.decode('utf-8'), # water
+                    b'\xf0\x9f\x8c\x8a '.decode('utf-8'), # water
                     b'\xe2\x98\x81\xef\xb8\x8f '.decode('utf-8'), # fog
-                    b'\xf0\x9f\x9a\xa2'.decode('utf-8'), # boat
+                    b'\xf0\x9f\x9a\xa2 '.decode('utf-8'), # boat
                   ]
 
 HIT_OR_MISS_EMOJI = [
-                    b'\xf0\x9f\x92\xa8'.decode('utf-8'), # Whoosh
-                    b'\xf0\x9f\x92\xa5'.decode('utf-8'), # BOOM
+                    b'\xf0\x9f\x92\xa8 '.decode('utf-8'), # Whoosh
+                    b'\xf0\x9f\x92\xa5 '.decode('utf-8'), # BOOM
                 ]
 
 BOATS = [
@@ -155,7 +153,7 @@ def get_model():
     return RandomForestClassifier(n_estimators = 1000, max_depth = 10)
 
 def fit_model(  model_path = ARGS_DEFAULT['--model-path'],
-                num_boards = ARGS_DEFAULT['--num-boards']
+                num_boards = ARGS_DEFAULT['--num-boards'],
             ):
     model = get_model()
     # First get the boards
@@ -169,7 +167,9 @@ def fit_model(  model_path = ARGS_DEFAULT['--model-path'],
     dump(model, os.path.expanduser(model_path))
     return model
 
-def play_game(model_path = ARGS_DEFAULT['--model-path']):
+def play_game(  model_path = ARGS_DEFAULT['--model-path'],
+                print_delay= ARGS_DEFAULT['--print-delay'],
+            ):
     model = load(os.path.expanduser(model_path))
 
     board = create_board()
@@ -185,7 +185,7 @@ def play_game(model_path = ARGS_DEFAULT['--model-path']):
             print("AI game over")
             break
         else:
-            time.sleep(1)
+            time.sleep(float(print_delay))
 
 def main():
     args = docopt(__doc__)
@@ -193,7 +193,8 @@ def main():
     os.system('mkdir -p %s'%os.path.expanduser(os.path.dirname(args['--model-path'])))
     if args['play']:
         assert os.path.exists(os.path.expanduser(args['--model-path'])), "You have to train the model first. (Did you provide the right model path?)"
-        play_game(args['--model-path'])
+        assert fastnumbers.isfloat(args['--print-delay']), "Delay must be a float or int."
+        play_game( args['--model-path'], args['--print-delay'])
     elif args['train']:
         fit_model(args['--model-path'], args['--num-boards'])
     else:
