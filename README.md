@@ -10,4 +10,4 @@ With a fresh game, the model seems to like picking positions along the diagonals
 
 # Future directions:
 * Create an AI to place the boats. Train it to best fool the AI I already implemented.
-* Take the boat placing one level further and implement an adversarial loop that has one model play the other. This is reminiscent of AlphaGo, AlphaStar, etc.
+* Take the AI one level further and implement an adversarial loop that has one model play the other. This is reminiscent of AlphaGo, AlphaStar, etc.
