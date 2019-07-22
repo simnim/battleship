@@ -199,9 +199,15 @@ def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
     #     Plug matrix into Placement Model
     place_model = get_place_model()
     blast_model = load(os.path.expanduser(blast_model_path))
+    # Maybe this will speed it up?
     blast_model.n_jobs = -1
+
+    # Figure out what the background probabilty distribution is
+    blast_probas = get_praba_distribution_from_blast_model(blast_model)
+
     boards = [ create_board() for i in range(int(num_boards)) ]
-    features = np.array( [b['hidden'].flatten() for b in boards] )
+    #features = np.array( [b['hidden'].flatten() for b in boards] )
+    features = np.array( [slice_up_board_into_place_features(b) for b in boards] )
     scores = np.array([ play_blast_game( blast_model, board, 0, False) for board in boards ])
     print("got here %s"%datetime.datetime.now())
     place_model.fit(features, scores)
@@ -215,13 +221,41 @@ def get_praba_distribution_from_blast_model(blast_model):
     for i in range(NUM_FAKE_BOARDS):
         fake_board = dict(observed = np.full((BOARD_SIZE,BOARD_SIZE), 1) )
         preds_proba = blast_model.predict_proba(slice_up_board_into_blast_features(fake_board))
-        target_counts +=  preds_proba[:,1]
+        target_counts += preds_proba[:,1]
     return target_counts / sum(target_counts)
 
 
-def slice_up_board_into_place_features():
-    #FIXME
-    pass
+def slice_up_board_into_place_features(board):
+    #FIXME: Add more features!
+    h_board = board['hidden']
+    # How many adjacent tiles have a boat?
+    adjacency_sum = 0
+    for row_i in range(BOARD_SIZE):
+        for col_i in range(BOARD_SIZE):
+            adjacency_sum += ( h_board[ row_i+1, col_i ] if (
+                                            h_board[ row_i, col_i ]
+                                        and row_i < BOARD_SIZE-1
+                            ) else 0 )
+            adjacency_sum += ( h_board[ row_i, col_i+1 ] if (
+                                            h_board[ row_i, col_i ]
+                                        and col_i < BOARD_SIZE-1
+                            ) else 0 )
+    # How many boats are one diagonal away?
+    diagonal_sum = 0
+    for row_i in range(BOARD_SIZE):
+        for col_i in range(BOARD_SIZE):
+            diagonal_sum += ( h_board[ row_i+1, col_i+1 ] if (
+                                                    h_board[ row_i, col_i ]
+                                                and row_i < BOARD_SIZE-1
+                                                and col_i < BOARD_SIZE-1
+                            ) else 0 )
+            diagonal_sum += ( h_board[ row_i-1, col_i+1 ] if (
+                                                    h_board[ row_i, col_i ]
+                                                and row_i >= 1
+                                                and col_i < BOARD_SIZE-1
+                            ) else 0 )
+    # Given the AI's first move probas, how does the initial board placement look?
+    return [adjacency_sum/2, diagonal_sum/2]
 
 
 def play_blast_game(    blast_model,
