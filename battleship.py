@@ -187,28 +187,21 @@ def get_place_model():
     return RandomForestRegressor()
 
 
-
 def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
                         blast_model_path = ARGS_DEFAULT['--blast-model-path'],
                         num_boards = ARGS_DEFAULT['--num-boards'],
                     ):
-    # Train:
-    #     For N random boards:
-    #         Rows:
-    #             Hidden board pixels
-    #         Labels:
-    #             How many shots AI took
-    #     Plug matrix into Placement Model
     place_model = get_place_model()
     blast_model = load(os.path.expanduser(blast_model_path))
+
     # Maybe this will speed it up?
     blast_model.n_jobs = -1
 
+    #FIXME: Add feature(s) based on this metric!
     # Figure out what the background probabilty distribution is
     # blast_probas = get_praba_distribution_from_blast_model(blast_model)
 
     boards = [ create_board() for i in range(int(num_boards)) ]
-    #features = np.array( [b['hidden'].flatten() for b in boards] )
     features = np.array([ slice_up_board_into_place_features(b) for b in boards ])
     scores = np.array([ play_blast_game( blast_model, board, 0, False) for board in boards ])
     print("got here %s"%datetime.datetime.now())
@@ -216,7 +209,7 @@ def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
     dump(place_model, os.path.expanduser(place_model_path))
     return place_model
 
-
+#FIXME: Add this back for the function
 # def get_praba_distribution_from_blast_model(blast_model):
 #     " Figure out where the blast model likes shooting for it's first move "
 #     target_counts = np.full((BOARD_SIZE*BOARD_SIZE,), 1.0)
@@ -225,6 +218,7 @@ def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
 #         preds_proba = blast_model.predict_proba(slice_up_board_into_blast_features(fake_board))
 #         target_counts += preds_proba[:,1]
 #     return target_counts / sum(target_counts)
+
 
 def evaluate_place_model(place_model, blast_model, num_boards):
     random_boards = place_boards = [ create_board() for i in range(int(num_boards)) ]
@@ -242,6 +236,7 @@ def make_board_using_place_model(place_model, num_boards):
     # Score each board using place_model
     board_scores = place_model.predict( features )
     return random_boards[ np.argmax( board_scores ) ]
+
 
 def slice_up_board_into_place_features(board):
     #FIXME: Add more features!
@@ -302,13 +297,14 @@ def main():
     # Make sure we have the directory
     os.system('mkdir -p %s'%os.path.expanduser(os.path.dirname(args['--blast-model-path'])))
     if args['play-random']:
-        assert os.path.exists(os.path.expanduser(args['--blast-model-path'])), "You have to train the model first. (Did you provide the right model path?)"
+        assert os.path.exists(os.path.expanduser(args['--blast-model-path'])), "You have to train the blast model first. (Did you provide the right model path?)"
         assert fastnumbers.isfloat(args['--print-delay']), "Delay must be a float or int."
         blast_model = load(os.path.expanduser(args['--blast-model-path']))
         board = create_board()
         play_blast_game( blast_model, board, args['--print-delay'])
     elif args['play-place']:
-        assert os.path.exists(os.path.expanduser(args['--blast-model-path'])), "You have to train the model first. (Did you provide the right model path?)"
+        assert os.path.exists(os.path.expanduser(args['--blast-model-path'])), "You have to train the blast model first. (Did you provide the right model path?)"
+        assert os.path.exists(os.path.expanduser(args['--place-model-path'])), "You have to train the place model first. (Did you provide the right model path?)"
         assert fastnumbers.isfloat(args['--print-delay']), "Delay must be a float or int."
         assert fastnumbers.isint(args['--num-boards']), "num boards must be an int."
         blast_model = load(os.path.expanduser(args['--blast-model-path']))
