@@ -5,7 +5,7 @@ I've not spent much time optimizing the model. I just used what I thought would
 work well enough for the POC. Tweak it to make it better.
 Right now I'm using a RandomForestClassifier with 1000 trees and maxdepth=10.
 
-To improve this model, simply tweak the get_model function and make sure the
+To improve this model, simply tweak the get_play_model function and make sure the
 object follows sklearn's api. (supports .fit() and .predict_proba() )
 
 There are two ways to run this code, either `train` or `play`.
@@ -117,7 +117,7 @@ def reveal_some_of_the_board(board):
 
 
 
-def get_features_given_board_and_rc(board, row_i, col_i):
+def get_play_features_given_board_and_rc(board, row_i, col_i):
     # row_i, col_i, pixel, num_hits, num_misses,
     #    up 1, left 1, down 1, right 1
     #    up 2, left 2, down 2, right 2
@@ -136,17 +136,17 @@ def get_features_given_board_and_rc(board, row_i, col_i):
     return features
 
 
-def slice_up_board_into_features(board):
+def slice_up_board_into_play_features(board):
     pixel_features = []
     for row_i in range(BOARD_SIZE):
         for col_i in range(BOARD_SIZE):
-            pixel_features.append( get_features_given_board_and_rc(board, row_i, col_i) )
+            pixel_features.append( get_play_features_given_board_and_rc(board, row_i, col_i) )
     return pixel_features
 
 
 def pick_next_spot_to_target(board, model):
     # First predict what pixels look good.
-    preds_proba = model.predict_proba(slice_up_board_into_features(board))
+    preds_proba = model.predict_proba(slice_up_board_into_play_features(board))
     best_i = sorted(
                   zip(  range(BOARD_SIZE*BOARD_SIZE)
                       , preds_proba[:,1]
@@ -157,23 +157,27 @@ def pick_next_spot_to_target(board, model):
     return best_i
 
 
-def get_model():
+def get_play_model():
     return RandomForestClassifier(n_estimators = 1000, max_depth = 10)
 
-def fit_model(  model_path = ARGS_DEFAULT['--model-path'],
+def fit_play_model(  model_path = ARGS_DEFAULT['--model-path'],
                 num_boards = ARGS_DEFAULT['--num-boards'],
             ):
-    model = get_model()
+    model = get_play_model()
     # First get the boards
     boards = [ reveal_some_of_the_board(create_board()) for i in range(int(num_boards)) ]
     features = np.concatenate([
-                    slice_up_board_into_features(board)
+                    slice_up_board_into_play_features(board)
                     for board in boards
                 ])
     labels = np.concatenate([ board['hidden'].flatten() for board in boards ])
     model.fit(features, labels)
     dump(model, os.path.expanduser(model_path))
     return model
+
+
+def fit_place_model():
+    pass
 
 def play_game(  model_path = ARGS_DEFAULT['--model-path'],
                 print_delay= ARGS_DEFAULT['--print-delay'],
@@ -205,7 +209,7 @@ def main():
         assert fastnumbers.isfloat(args['--print-delay']), "Delay must be a float or int."
         play_game( args['--model-path'], args['--print-delay'])
     elif args['train']:
-        fit_model(args['--model-path'], args['--num-boards'])
+        fit_play_model(args['--model-path'], args['--num-boards'])
     else:
         sys.stderr.write("How did you get here???\n")
         sys.exit(1)
