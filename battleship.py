@@ -235,7 +235,7 @@ def main():
         assert fastnumbers.isfloat(args['--print-delay']), "Delay must be a float or int."
         blast_model = load(os.path.expanduser(args['--blast-model-path']))
         board = create_board()
-        play_game( blast_model, board, args['--print-delay'])
+        play_blast_game( blast_model, board, args['--print-delay'])
     elif args['train']:
         fit_blast_model(args['--blast-model-path'], args['--num-boards'])
     else:
