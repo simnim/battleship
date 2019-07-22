@@ -166,6 +166,7 @@ def pick_next_blast_spot_to_target(board, blast_model):
 def get_blast_model():
     return RandomForestClassifier(n_estimators = 1000, max_depth = 10)
 
+
 def fit_blast_model(  blast_model_path = ARGS_DEFAULT['--blast-model-path'],
                       num_boards = ARGS_DEFAULT['--num-boards'],
             ):
@@ -182,10 +183,10 @@ def fit_blast_model(  blast_model_path = ARGS_DEFAULT['--blast-model-path'],
     return blast_model
 
 
-
-
 def get_place_model():
     return RandomForestRegressor()
+
+
 
 def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
                         blast_model_path = ARGS_DEFAULT['--blast-model-path'],
@@ -225,6 +226,15 @@ def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
 #         target_counts += preds_proba[:,1]
 #     return target_counts / sum(target_counts)
 
+def evaluate_place_model(place_model, blast_model, num_boards):
+    random_boards = place_boards = [ create_board() for i in range(int(num_boards)) ]
+    random_scores = np.array([ play_blast_game( blast_model, board, 0, False) for board in random_boards ])
+
+    place_boards = [ make_board_using_place_model(place_model, 1000) for i in range(int(num_boards)) ]
+    place_scores = np.array([ play_blast_game( blast_model, board, 0, False) for board in place_boards ])
+
+    return sum(place_scores) / float(sum(random_scores))
+
 
 def make_board_using_place_model(place_model, num_boards):
     random_boards = [ create_board() for i in range(int(num_boards)) ]
@@ -232,7 +242,6 @@ def make_board_using_place_model(place_model, num_boards):
     # Score each board using place_model
     board_scores = place_model.predict( features )
     return random_boards[ np.argmax( board_scores ) ]
-
 
 def slice_up_board_into_place_features(board):
     #FIXME: Add more features!
@@ -282,7 +291,7 @@ def play_blast_game(    blast_model,
         if verbose: print(render_board(board, target_pos))
         # If we hit every boat:
         if sum(sum(board['observed']==2)) == sum([ b[1] for b  in BOATS ]):
-            if verbose: print("All boats sunk!")
+            if verbose: print(f"All boats sunk! Number of moves = {move_i}")
             return move_i
             break
         else:
