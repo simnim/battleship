@@ -33,6 +33,8 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from docopt import docopt
 from joblib import dump, load
 import fastnumbers
+import datetime
+from itertools import repeat
 
 ARGS_DEFAULT = docopt(__doc__, argv=['train-blast'])
 
@@ -61,6 +63,7 @@ BOATS = [
             ['Destroyer',2 ],
         ]
 
+NUM_FAKE_BOARDS = 1000
 
 def render_board(board, target=None):
     ret = []
@@ -181,7 +184,7 @@ def fit_blast_model(  blast_model_path = ARGS_DEFAULT['--blast-model-path'],
 
 
 def get_place_model():
-    return RandomForestRegressor(n_estimators = 1000, max_depth = 10)
+    return RandomForestRegressor()
 
 def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
                         blast_model_path = ARGS_DEFAULT['--blast-model-path'],
@@ -195,22 +198,37 @@ def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
     #             How many shots AI took
     #     Plug matrix into Placement Model
     place_model = get_place_model()
-    blast_model = load(os.path.expanduser(args['--blast-model-path']))
+    blast_model = load(os.path.expanduser(blast_model_path))
+    blast_model.n_jobs = -1
     boards = [ create_board() for i in range(int(num_boards)) ]
-    features = np.concatenate( [b['hidden'].flatten() for b in boards] )
-    scores = np.array([ blast_game(board, blast_model, 0, False) for b in boards ])
+    features = np.array( [b['hidden'].flatten() for b in boards] )
+    scores = np.array([ play_blast_game( blast_model, board, 0, False) for board in boards ])
+    print("got here %s"%datetime.datetime.now())
     place_model.fit(features, scores)
     dump(place_model, os.path.expanduser(place_model_path))
     return place_model
 
 
+def get_praba_distribution_from_blast_model(blast_model):
+    " Figure out where the blast model likes shooting for it's first move "
+    target_counts = np.full((BOARD_SIZE*BOARD_SIZE,), 1.0)
+    for i in range(NUM_FAKE_BOARDS):
+        fake_board = dict(observed = np.full((BOARD_SIZE,BOARD_SIZE), 1) )
+        preds_proba = blast_model.predict_proba(slice_up_board_into_blast_features(fake_board))
+        target_counts +=  preds_proba[:,1]
+    return target_counts / sum(target_counts)
 
 
-def play_blast_game(  blast_model,
-                board,
-                print_delay= ARGS_DEFAULT['--print-delay'],
-                verbose = True
-            ):
+def slice_up_board_into_place_features():
+    #FIXME
+    pass
+
+
+def play_blast_game(    blast_model,
+                        board,
+                        print_delay= ARGS_DEFAULT['--print-delay'],
+                        verbose = True
+                    ):
     if verbose: print(render_board(board))
     for move_i in range(BOARD_SIZE*BOARD_SIZE):
         if verbose: print("######## Move %s ########"%move_i)
@@ -240,7 +258,7 @@ def main():
     elif args['train-blast']:
         fit_blast_model(args['--blast-model-path'], args['--num-boards'])
     elif args['train-place']:
-        fit_place_model(args['--place-model-path'], args['--num-boards'])
+        fit_place_model(args['--place-model-path'], args['--blast-model-path'], args['--num-boards'])
     else:
         sys.stderr.write("How did you get here???\n")
         sys.exit(1)
