@@ -5,7 +5,7 @@ I've not spent much time optimizing the model. I just used what I thought would
 work well enough for the POC. Tweak it to make it better.
 Right now I'm using a RandomForestClassifier with 1000 trees and maxdepth=10.
 
-To improve this model, simply tweak the get_play_model function and make sure the
+To improve this model, simply tweak the get_blast_model function and make sure the
 object follows sklearn's api. (supports .fit() and .predict_proba() )
 
 There are two ways to run this code, either `train` or `play`.
@@ -19,15 +19,16 @@ Usage:
     battleship.py play [options]
 
 Options:
-    -h, --help              Show this help message and exit
-    --num-boards NUM        How many boards do you want to use to train? [default: 100000]
-    --model-path PATH       Where do you want to store the model? [default: ~/models/battleship/model.joblib]
-    --print-delay SECONDS   In play mode, how many seconds to wait between printing AI moves? (try .1 for it to run faster) [default: 1]
+    -h, --help                Show this help message and exit
+    --num-boards NUM          How many boards do you want to use to train? [default: 100000]
+    --blast-model-path PATH   Where do you want to store the model? [default: ~/models/battleship/blast_model.joblib]
+    --place-model-path PATH   Where do you want to store the model? [default: ~/models/battleship/place_model.joblib]
+    --print-delay SECONDS     In play mode, how many seconds to wait between printing AI moves? (try .1 for it to run faster) [default: 1]
 """
 import numpy as np
 import time
 import os
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from docopt import docopt
 from joblib import dump, load
 import fastnumbers
@@ -117,7 +118,7 @@ def reveal_some_of_the_board(board):
 
 
 
-def get_play_features_given_board_and_rc(board, row_i, col_i):
+def get_blast_features_given_board_and_rc(board, row_i, col_i):
     # row_i, col_i, pixel, num_hits, num_misses,
     #    up 1, left 1, down 1, right 1
     #    up 2, left 2, down 2, right 2
@@ -136,17 +137,17 @@ def get_play_features_given_board_and_rc(board, row_i, col_i):
     return features
 
 
-def slice_up_board_into_play_features(board):
+def slice_up_board_into_blast_features(board):
     pixel_features = []
     for row_i in range(BOARD_SIZE):
         for col_i in range(BOARD_SIZE):
-            pixel_features.append( get_play_features_given_board_and_rc(board, row_i, col_i) )
+            pixel_features.append( get_blast_features_given_board_and_rc(board, row_i, col_i) )
     return pixel_features
 
 
-def pick_next_spot_to_target(board, model):
+def pick_next_blast_spot_to_target(board, blast_model):
     # First predict what pixels look good.
-    preds_proba = model.predict_proba(slice_up_board_into_play_features(board))
+    preds_proba = blast_model.predict_proba(slice_up_board_into_blast_features(board))
     best_i = sorted(
                   zip(  range(BOARD_SIZE*BOARD_SIZE)
                       , preds_proba[:,1]
@@ -157,45 +158,70 @@ def pick_next_spot_to_target(board, model):
     return best_i
 
 
-def get_play_model():
+def get_blast_model():
     return RandomForestClassifier(n_estimators = 1000, max_depth = 10)
 
-def fit_play_model(  model_path = ARGS_DEFAULT['--model-path'],
-                num_boards = ARGS_DEFAULT['--num-boards'],
+def fit_blast_model(  blast_model_path = ARGS_DEFAULT['--blast-model-path'],
+                      num_boards = ARGS_DEFAULT['--num-boards'],
             ):
-    model = get_play_model()
+    blast_model = get_blast_model()
     # First get the boards
     boards = [ reveal_some_of_the_board(create_board()) for i in range(int(num_boards)) ]
     features = np.concatenate([
-                    slice_up_board_into_play_features(board)
+                    slice_up_board_into_blast_features(board)
                     for board in boards
                 ])
     labels = np.concatenate([ board['hidden'].flatten() for board in boards ])
-    model.fit(features, labels)
-    dump(model, os.path.expanduser(model_path))
-    return model
+    blast_model.fit(features, labels)
+    dump(blast_model, os.path.expanduser(blast_model_path))
+    return blast_model
 
 
-def fit_place_model():
-    pass
 
-def play_game(  model_path = ARGS_DEFAULT['--model-path'],
+
+def get_place_model():
+    return RandomForestRegressor(n_estimators = 1000, max_depth = 10)
+
+def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
+                        blast_model_path = ARGS_DEFAULT['--blast-model-path'],
+                        num_boards = ARGS_DEFAULT['--num-boards'],
+                    ):
+    # Train:
+    #     For N random boards:
+    #         Rows:
+    #             Hidden board pixels
+    #         Labels:
+    #             How many shots AI took
+    #     Plug matrix into Placement Model
+    place_model = get_place_model()
+    blast_model = load(os.path.expanduser(args['--blast-model-path']))
+    boards = [ create_board() for i in range(int(num_boards)) ]
+    features = np.concatenate( [b['hidden'].flatten() for b in boards] )
+    scores = np.array([ blast_game(board, blast_model, 0, False) for b in boards ])
+    place_model.fit(features, scores)
+    dump(place_model, os.path.expanduser(place_model_path))
+    return
+
+
+
+
+def play_blast_game(  blast_model,
+                board,
                 print_delay= ARGS_DEFAULT['--print-delay'],
+                verbose = True
             ):
-    model = load(os.path.expanduser(model_path))
-
-    board = create_board()
-    print(render_board(board))
+    if verbose: print(render_board(board))
     for move_i in range(BOARD_SIZE*BOARD_SIZE):
-        print("######## Move %s ########"%move_i)
+        if verbose: print("######## Move %s ########"%move_i)
         # Use the model to pick a spot to target, hit it, then keep going
-        target_pos = pick_next_spot_to_target(board, model)
+        target_pos = pick_next_blast_spot_to_target(board, blast_model)
         # Update board with targetted position
         board['observed'][int(target_pos/BOARD_SIZE), target_pos%BOARD_SIZE] = board['hidden'][int(target_pos/BOARD_SIZE), target_pos%BOARD_SIZE]
-        print(render_board(board, target_pos))
+        if verbose: print(render_board(board, target_pos))
         # If we hit every boat:
         if sum(sum(board['observed']==2)) == sum([ b[1] for b  in BOATS ]):
-            print("All boats sunk!")
+            if verbose: print("All boats sunk!")
+            return move_i
             break
         else:
             time.sleep(float(print_delay))
@@ -203,13 +229,15 @@ def play_game(  model_path = ARGS_DEFAULT['--model-path'],
 def main():
     args = docopt(__doc__)
     # Make sure we have the directory
-    os.system('mkdir -p %s'%os.path.expanduser(os.path.dirname(args['--model-path'])))
+    os.system('mkdir -p %s'%os.path.expanduser(os.path.dirname(args['--blast-model-path'])))
     if args['play']:
-        assert os.path.exists(os.path.expanduser(args['--model-path'])), "You have to train the model first. (Did you provide the right model path?)"
+        assert os.path.exists(os.path.expanduser(args['--blast-model-path'])), "You have to train the model first. (Did you provide the right model path?)"
         assert fastnumbers.isfloat(args['--print-delay']), "Delay must be a float or int."
-        play_game( args['--model-path'], args['--print-delay'])
+        blast_model = load(os.path.expanduser(args['--blast-model-path']))
+        board = create_board()
+        play_game( blast_model, board, args['--print-delay'])
     elif args['train']:
-        fit_play_model(args['--model-path'], args['--num-boards'])
+        fit_blast_model(args['--blast-model-path'], args['--num-boards'])
     else:
         sys.stderr.write("How did you get here???\n")
         sys.exit(1)
