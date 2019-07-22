@@ -17,7 +17,8 @@ those versions.
 Usage:
     battleship.py train-blast [options]
     battleship.py train-place [options]
-    battleship.py play [options]
+    battleship.py play-place [options]
+    battleship.py play-random [options]
 
 Options:
     -h, --help                Show this help message and exit
@@ -203,11 +204,11 @@ def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
     blast_model.n_jobs = -1
 
     # Figure out what the background probabilty distribution is
-    blast_probas = get_praba_distribution_from_blast_model(blast_model)
+    # blast_probas = get_praba_distribution_from_blast_model(blast_model)
 
     boards = [ create_board() for i in range(int(num_boards)) ]
     #features = np.array( [b['hidden'].flatten() for b in boards] )
-    features = np.array( [slice_up_board_into_place_features(b) for b in boards] )
+    features = np.array([ slice_up_board_into_place_features(b) for b in boards ])
     scores = np.array([ play_blast_game( blast_model, board, 0, False) for board in boards ])
     print("got here %s"%datetime.datetime.now())
     place_model.fit(features, scores)
@@ -215,14 +216,22 @@ def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
     return place_model
 
 
-def get_praba_distribution_from_blast_model(blast_model):
-    " Figure out where the blast model likes shooting for it's first move "
-    target_counts = np.full((BOARD_SIZE*BOARD_SIZE,), 1.0)
-    for i in range(NUM_FAKE_BOARDS):
-        fake_board = dict(observed = np.full((BOARD_SIZE,BOARD_SIZE), 1) )
-        preds_proba = blast_model.predict_proba(slice_up_board_into_blast_features(fake_board))
-        target_counts += preds_proba[:,1]
-    return target_counts / sum(target_counts)
+# def get_praba_distribution_from_blast_model(blast_model):
+#     " Figure out where the blast model likes shooting for it's first move "
+#     target_counts = np.full((BOARD_SIZE*BOARD_SIZE,), 1.0)
+#     for i in range(NUM_FAKE_BOARDS):
+#         fake_board = dict(observed = np.full((BOARD_SIZE,BOARD_SIZE), 1) )
+#         preds_proba = blast_model.predict_proba(slice_up_board_into_blast_features(fake_board))
+#         target_counts += preds_proba[:,1]
+#     return target_counts / sum(target_counts)
+
+
+def make_board_using_place_model(place_model, num_boards):
+    random_boards = [ create_board() for i in range(int(num_boards)) ]
+    features = [ slice_up_board_into_place_features(b) for b in random_boards ]
+    # Score each board using place_model
+    board_scores = place_model.predict( features )
+    return random_boards[ np.argmax( board_scores ) ]
 
 
 def slice_up_board_into_place_features(board):
@@ -283,11 +292,19 @@ def main():
     args = docopt(__doc__)
     # Make sure we have the directory
     os.system('mkdir -p %s'%os.path.expanduser(os.path.dirname(args['--blast-model-path'])))
-    if args['play']:
+    if args['play-random']:
         assert os.path.exists(os.path.expanduser(args['--blast-model-path'])), "You have to train the model first. (Did you provide the right model path?)"
         assert fastnumbers.isfloat(args['--print-delay']), "Delay must be a float or int."
         blast_model = load(os.path.expanduser(args['--blast-model-path']))
         board = create_board()
+        play_blast_game( blast_model, board, args['--print-delay'])
+    elif args['play-place']:
+        assert os.path.exists(os.path.expanduser(args['--blast-model-path'])), "You have to train the model first. (Did you provide the right model path?)"
+        assert fastnumbers.isfloat(args['--print-delay']), "Delay must be a float or int."
+        assert fastnumbers.isint(args['--num-boards']), "num boards must be an int."
+        blast_model = load(os.path.expanduser(args['--blast-model-path']))
+        place_model = load(os.path.expanduser(args['--place-model-path']))
+        board = make_board_using_place_model(place_model, int(args['--num-boards']) )
         play_blast_game( blast_model, board, args['--print-delay'])
     elif args['train-blast']:
         fit_blast_model(args['--blast-model-path'], args['--num-boards'])
