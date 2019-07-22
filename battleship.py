@@ -64,7 +64,7 @@ def render_board(board, target=None):
     ret = []
     for state in board.keys():
         ret.extend( [
-            f'### STATE: {state} ###\n',
+            f'### STATE: {state} ###',
             '\n'.join([
                      ''.join([
                                     HIT_OR_MISS_EMOJI[int(cell==2)]
@@ -183,6 +183,7 @@ def play_game(  model_path = ARGS_DEFAULT['--model-path'],
     board = create_board()
     print(render_board(board))
     for move_i in range(BOARD_SIZE*BOARD_SIZE):
+        print("######## Move %s ########"%move_i)
         # Use the model to pick a spot to target, hit it, then keep going
         target_pos = pick_next_spot_to_target(board, model)
         # Update board with targetted position
