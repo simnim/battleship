@@ -15,7 +15,8 @@ scikit-learn==0.19.2 and numpy==1.16.1 so if it's not working try with
 those versions.
 
 Usage:
-    battleship.py train [options]
+    battleship.py train-blast [options]
+    battleship.py train-place [options]
     battleship.py play [options]
 
 Options:
@@ -33,7 +34,7 @@ from docopt import docopt
 from joblib import dump, load
 import fastnumbers
 
-ARGS_DEFAULT = docopt(__doc__, argv=['train'])
+ARGS_DEFAULT = docopt(__doc__, argv=['train-blast'])
 
 #np.random.seed(0)
 BOARD_SIZE = 10
@@ -200,7 +201,7 @@ def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
     scores = np.array([ blast_game(board, blast_model, 0, False) for b in boards ])
     place_model.fit(features, scores)
     dump(place_model, os.path.expanduser(place_model_path))
-    return
+    return place_model
 
 
 
@@ -236,8 +237,10 @@ def main():
         blast_model = load(os.path.expanduser(args['--blast-model-path']))
         board = create_board()
         play_blast_game( blast_model, board, args['--print-delay'])
-    elif args['train']:
+    elif args['train-blast']:
         fit_blast_model(args['--blast-model-path'], args['--num-boards'])
+    elif args['train-place']:
+        fit_place_model(args['--place-model-path'], args['--num-boards'])
     else:
         sys.stderr.write("How did you get here???\n")
         sys.exit(1)
