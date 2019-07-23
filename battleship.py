@@ -204,12 +204,11 @@ def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
     boards = [ create_board() for i in range(int(num_boards)) ]
     features = np.array([ slice_up_board_into_place_features(b) for b in boards ])
     scores = np.array([ play_blast_game( blast_model, board, 0, False) for board in boards ])
-    print("got here %s"%datetime.datetime.now())
     place_model.fit(features, scores)
     dump(place_model, os.path.expanduser(place_model_path))
     return place_model
 
-#FIXME: Add this back for the function
+#FIXME: Add this back for placement features
 # def get_praba_distribution_from_blast_model(blast_model):
 #     " Figure out where the blast model likes shooting for it's first move "
 #     target_counts = np.full((BOARD_SIZE*BOARD_SIZE,), 1.0)
@@ -220,6 +219,7 @@ def fit_place_model(    place_model_path = ARGS_DEFAULT['--place-model-path'],
 #     return target_counts / sum(target_counts)
 
 
+#FIXME: Add an option for parsing this
 def evaluate_place_model(place_model, blast_model, num_boards):
     random_boards = place_boards = [ create_board() for i in range(int(num_boards)) ]
     random_scores = np.array([ play_blast_game( blast_model, board, 0, False) for board in random_boards ])
